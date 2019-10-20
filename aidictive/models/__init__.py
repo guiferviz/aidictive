@@ -1,0 +1,3 @@
+
+from .ffnn import FFNN
+

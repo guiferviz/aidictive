@@ -19,6 +19,6 @@ def add(name, fun):
 def get(name_or_fun):
     """Get an activation function from name or return callable. """
     if type(name_or_fun) == str:
-        return _ACTIVATIONS[name]
+        return _ACTIVATIONS[name_or_fun]
     return name_or_fun
 
