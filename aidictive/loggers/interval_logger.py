@@ -4,8 +4,8 @@ from .base_logger import BaseLogger
 
 class IntervalLogger(BaseLogger):
 
-    def __init__(self, epoch_interval=1, batch_interval=1e100):
-        super().__init__()
+    def __init__(self, total_samples, epoch_interval=1, batch_interval=1e100):
+        super().__init__(total_samples)
         self.epoch_interval = epoch_interval
         # If epoch interval is not 1 we don't want to log any epoch.
         # I suppose that no one is going to run 1e100 epochs...

@@ -7,113 +7,177 @@ import sklearn.metrics
 import torch
 
 from .optimizers import create as create_optim
-from .loggers import IntervalLogger
+from .loggers import create as create_logger
+from .data import get_tensor_data_loader
+
+
+DEFAULT_OPTIMIZER = dict(
+    name="radam"
+)
+
+DEFAULT_LOGGER = dict(
+    name="interval",
+    params=dict(
+        epoch_interval=1,
+        batch_interval=1e100,
+    )
+)
+
+DEFAULT_SCHEDULER = dict(
+    name="reduceonplateau",
+    params=dict(
+        patience=5,
+    )
+)
+
+OPTIMIZER = "optimizer"
+SCHEDULER = "scheduler"
+TRAIN_LOGGER = "train_logger"
+DL_TRAIN = "dl_train"
+LOSS = "loss"
+METRIC = "metric"
 
 
 class Trainer(object):
 
     def __init__(self, model):
+        # Save a reference of the model to train.
         self.model = model
-        self.train_logger = None
-        self.test_logger = None
-        self.optimizer = None
+        # Create an empty state.
+        # An state contains all the objects needed for training.
+        # Using the _settings dict we will create all the objects before
+        # training.
+        self._state = {}
+        # Create settings with default values.
+        self._settings = {}
+        self.set_optimizer(DEFAULT_OPTIMIZER)
+        self.set_logger(DEFAULT_LOGGER)
 
-    def get_optimizer(self, parameters, optimizer="sgd", **kwargs):
-        """Creates a new optimizer or reuses the given object. """
+    def _remove_from_state(self, key):
+        """Safety removes a key from the state dict.
+        
+        Returns True if the key was in the state, False if not.
+        """
 
-        # If no optimizer is given try to reuse an optimizer from the last
-        # executions.
-        if optimizer is None:
-            if self.optimizer is None:
-                raise Exception("No existing optimizer, I cannot reuse it.")
-            optimizer = self.optimizer
-        else:
-            optimizer = create_optim(optimizer, parameters, **kwargs)
-        return optimizer
-
-    def get_data_loader(self, X, Y, batch_size=None):
-        if type(X) == np.ndarray:
-            assert Y is not None
-            # Converting numpy arrays to tensors.
-            X = torch.tensor(X, dtype=torch.float)
-            Y = torch.tensor(Y, dtype=torch.float)
-        ds = torch.utils.data.dataset.TensorDataset(X, Y)
-        dl = torch.utils.data.DataLoader(ds,
-                                         batch_size=batch_size,
-                                         shuffle=True)
-        return dl
-
-    def get_predict_data_loader(self, data):
-        X = data
-        if type(X) == np.ndarray:
-            X = torch.tensor(X, dtype=torch.float)
-        ds = X
-        if isinstance(ds, torch.Tensor):
-            ds = torch.utils.data.dataset.TensorDataset(X)
-        dl = ds
-        if isinstance(dl, torch.utils.data.dataset.Dataset):
-            dl = torch.utils.data.DataLoader(ds, batch_size=2**20)
-        return dl
+        return self._state.pop(key, None) is not None
 
     def get_model_device(self, model):
+        # TODO: move this method to utils.
         # Assumes all parameters are in the same device.
         return next(model.parameters()).device
+
+    def set_optimizer(self, optimizer_conf, **kwargs):
+        if bool(kwargs) and type(optimizer_conf) != dict:
+            optimizer_conf = dict(
+                name=optimizer_conf,
+                params=kwargs,
+            )
+        assert type(optimizer_conf) == dict
+        # Save optimizer configuration so we can used later for creating and
+        # object or using it as a historical log.
+        self._settings[OPTIMIZER] = optimizer_conf
+        # Reset optimizer of the state so we need to recreate it before fit.
+        self._remove_from_state(OPTIMIZER)
+        # Reset schedulers because they depend on the optimizer.
+        self._remove_from_state(SCHEDULER)
+
+    def _create_optimizer(self):
+        print("Creating optimizer...")
+        optimizer_conf = self._settings[OPTIMIZER]
+        name_or_optimizer = optimizer_conf["name"]
+        params = optimizer_conf.get("params", {})
+        optimizer = create_optim(name_or_optimizer,
+                                 self.model.parameters(),
+                                 **params)
+        self._state[OPTIMIZER] = optimizer
+
+    def set_logger(self, logger_conf, **kwargs):
+        if bool(kwargs) and type(logger_conf) != dict:
+            logger_conf = dict(
+                name=logger_conf,
+                params=kwargs,
+            )
+        assert type(logger_conf) == dict
+        # Save logger configuration so we can used later for creating and
+        # object or using it as a historical log.
+        self._settings[TRAIN_LOGGER] = logger_conf
+        # Removing logger from the state so we need to recreate it before fit.
+        self._remove_from_state(TRAIN_LOGGER)
+
+    def _create_train_logger(self, total_samples):
+        print("Creating train logger...")
+        logger_conf = self._settings["train_logger"]
+        name_or_logger = logger_conf["name"]
+        params = logger_conf.get("params", {})
+        train_logger = create_logger(name_or_logger,
+                                     total_samples,
+                                     **params)
+        self._state[TRAIN_LOGGER] = train_logger
+
+    def _create_dl_train(self, X, Y, batch_size):
+        print("Creating data loader for train...")
+        dl_train = get_tensor_data_loader(X, Y,
+                                          batch_size=batch_size,
+                                          shuffle=True)
+        self._state[DL_TRAIN] = dl_train
+
+    def set_lr(self, lr):
+        """Utility function to change the learning rate of an optimizer. """
+
+        for i in self._state[OPTIMIZER].param_groups:
+            i["lr"] = lr
+
+    def prepare_for_fit(self,
+                        data_train_X, data_train_Y=None, batch_size=32):
+        """Creates all the objects needed for training using the settings. """
+
+        # Create data loaders if needed.
+        if DL_TRAIN not in self._state:
+            self._create_dl_train(data_train_X, data_train_Y,
+                                  batch_size=batch_size)
+        dl_train = self._state[DL_TRAIN]
+        # Create train and test loggers.
+        if TRAIN_LOGGER not in self._state:
+            self._create_train_logger(len(dl_train))
+        # Create optimizer if needed.
+        if OPTIMIZER not in self._state:
+            self._create_optimizer()
+        optimizer = self._state[OPTIMIZER]
+        # TODO: Create LR schedulers after creating optimizer.
+        #if scheduler is not None:
+        #    patience = 10 if scheduler is True else scheduler
+        #    scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, patience=patience, verbose=True)
+        # TODO: Get loss function from a factory method.
+        loss_function = torch.nn.functional.l1_loss
+        self._state[LOSS] = loss_function
+        # TODO: Get metric function from a factory method.
+        metric_function = sklearn.metrics.mean_absolute_error
+        self._state[METRIC] = metric_function
 
     def fit(self,
             data_train_X, data_train_Y=None,
             data_val_X=None, data_val_Y=None,
-            optimizer="radam", optimizer_params=None,
-            scheduler=None,
             n_epochs=2,
-            batch_size=32,
-            continue_fit=False,
-            logger=None, log_epoch_interval=1, log_batch_interval=1e100):
+            batch_size=32):
         """Train a PyTorch complex model using a SKLearn simple API. """
 
-        # If continue training we neet to set to None all the components that
-        # we want to reuse.
-        if continue_fit:
-            optimizer = None
-        # Create data loaders.
-        dl_train = self.get_data_loader(data_train_X, data_train_Y,
-                                        batch_size=batch_size)
-        #dl_val = self.get_data_loader(data_val_X, data_val_Y)
-        # Set optimizer and overwrite the existing one.
-        if optimizer_params is None:
-            optimizer_params = {}
-        optimizer = self.get_optimizer(self.model.parameters(),
-                                       optimizer,
-                                       **optimizer_params)
-        self.optimizer = optimizer  # We can reuse it in future fits.
-        # Create train and test loggers.
-        if logger == None:
-            logger = IntervalLogger(epoch_interval=log_epoch_interval,
-                                    batch_interval=log_batch_interval)
-            logger.init(len(dl_train))
-        self.train_logger = logger
-        #test_logger = None
-        #if data_loader_val is not None:
-        #    test_logger = IntervalLogger(epoch_interval=log_epoch_interval,
-        #                                 batch_interval=1e100)
-        #    test_logger.init(["j-coupling"], len(data_loader_val))
-        #self.test_logger = test_logger
-        # LR schedulers.
-        #if scheduler is not None:
-        #    patience = 10 if scheduler is True else scheduler
-        #    scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, patience=patience, verbose=True)
-        # TODO: Get loss function.
-        loss_function = torch.nn.functional.l1_loss
-        # TODO: Get metric function.
-        metric_function = sklearn.metrics.mean_absolute_error
+        self.prepare_for_fit(data_train_X, data_train_Y, batch_size)
+        # Set the fit fundamental tools as local variables.
+        optimizer = self._state[OPTIMIZER]
+        train_logger = self._state[TRAIN_LOGGER]
+        dl_train = self._state[DL_TRAIN]
+        loss_function = self._state[LOSS]
+        metric_function = self._state[METRIC]
+
         ###############
         # Train loop. #
         ###############
         device = self.get_model_device(self.model)
         self.model.train()
         for n_epoch in range(1, n_epochs + 1):
-            logger.init_epoch()
+            train_logger.init_epoch()
             for X, Y in dl_train:
-                logger.init_batch()
+                train_logger.init_batch()
                 X, Y = X.to(device), Y.to(device)
                 optimizer.zero_grad()
                 Y_hat = self.model(X)
@@ -125,7 +189,7 @@ class Trainer(object):
                 loss.backward()
                 optimizer.step()
                 Y, Y_hat = Y.detach().cpu().numpy(), Y_hat.detach().cpu().numpy()
-                
+ 
                 # Undo transformations before computing metric.
                 #y, y_hat = pd.DataFrame({
                 #    "molecule_name": np.nan,
@@ -140,19 +204,19 @@ class Trainer(object):
                 #y, y_hat = y["scalar_coupling_constant"], y_hat["scalar_coupling_constant"]
 
                 metric = metric_function(Y, Y_hat)
-                logger.log("Metric", metric)
-                logger.log("Loss", loss.item())
+                train_logger.log("Metric", metric)
+                train_logger.log("Loss", loss.item())
                 batch_size = len(Y_hat)
-                logger.end_batch(batch_size)
-            logger.end_epoch()
+                train_logger.end_batch(batch_size)
+            train_logger.end_epoch()
             #if scheduler is not None:
-            #    scheduler.step(logger.get_current_loss("j-coupling"))
+            #    scheduler.step(train_logger.get_current_loss("j-coupling"))
             #if data_loader_val is not None:
             #    print("Validation:")
             #    #self.test(data_loader_val, logger=test_logger)
             #    test_model_batch(ds_val, plot=False)
             #    self.train()
-        logger.end()
+        train_logger.end()
 
     def test(self, data_loader,
              logger=None, log_epoch_interval=1, log_batch_interval=1e100):
@@ -202,7 +266,8 @@ class Trainer(object):
         self.test_logger = logger
 
     def predict(self, data):
-        dl = self.get_predict_data_loader(data)
+        # TODO: dynamic batch size and iterate batch and join solutions.
+        dl = get_tensor_data_loader(data, batch_size=1000000)
         self.model.eval()
         with torch.no_grad():
             device = self.get_model_device(self.model)

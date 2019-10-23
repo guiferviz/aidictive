@@ -4,10 +4,7 @@ import time
 
 class BaseLogger(object):
 
-    def __init__(self):
-        pass
-
-    def init(self, total_samples=None):
+    def __init__(self, total_samples):
         self.total_samples = total_samples
         # Properties related to the epoch.
         self.epoch = 0
