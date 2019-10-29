@@ -5,6 +5,9 @@ Addictive AI library built on top of others amazing libraries.
 
 from ._version import __version__
 from . import models
+from . import plot
+from . import eda
+from . import pandas_accessors
 
 
 __author__ = "guiferviz"

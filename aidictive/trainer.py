@@ -9,6 +9,9 @@ import torch
 from .optimizers import create as create_optim
 from .loggers import create as create_logger
 from .data import get_tensor_data_loader
+from .schedulers import create as create_scheduler
+from .losses import get as create_loss
+from .metrics import get as create_metric
 
 
 DEFAULT_OPTIMIZER = dict(
@@ -24,9 +27,11 @@ DEFAULT_LOGGER = dict(
 )
 
 DEFAULT_SCHEDULER = dict(
-    name="reduceonplateau",
+    name="reducelronplateau",
     params=dict(
         patience=5,
+        factor=0.1,
+        verbose=True,
     )
 )
 
@@ -51,15 +56,32 @@ class Trainer(object):
         # Create settings with default values.
         self._settings = {}
         self.set_optimizer(DEFAULT_OPTIMIZER)
+        self.set_scheduler(DEFAULT_SCHEDULER)
         self.set_logger(DEFAULT_LOGGER)
 
     def _remove_from_state(self, key):
         """Safety removes a key from the state dict.
-        
+
         Returns True if the key was in the state, False if not.
         """
 
-        return self._state.pop(key, None) is not None
+        return self._remove_from_dict(self._state, key)
+
+    def _remove_from_settings(self, key):
+        """Safety removes a key from the settings dict.
+
+        Returns True if the key was in the settings, False if not.
+        """
+
+        return self._remove_from_dict(self._settings, key)
+
+    def _remove_from_dict(self, dic, key):
+        """Safety removes a key from a dictionary.
+        
+        Returns True if the key was in the dict, False if not.
+        """
+
+        return dic.pop(key, None) is not None
 
     def get_model_device(self, model):
         # TODO: move this method to utils.
@@ -73,7 +95,7 @@ class Trainer(object):
                 params=kwargs,
             )
         assert type(optimizer_conf) == dict
-        # Save optimizer configuration so we can used later for creating and
+        # Save optimizer configuration so we can use it later for creating an
         # object or using it as a historical log.
         self._settings[OPTIMIZER] = optimizer_conf
         # Reset optimizer of the state so we need to recreate it before fit.
@@ -90,6 +112,33 @@ class Trainer(object):
                                  self.model.parameters(),
                                  **params)
         self._state[OPTIMIZER] = optimizer
+
+    def set_scheduler(self, scheduler_conf, **kwargs):
+        if bool(kwargs) and type(scheduler_conf) != dict:
+            scheduler_conf = dict(
+                name=scheduler_conf,
+                params=kwargs,
+            )
+        if scheduler_conf is None:
+            # Remove scheduler if exists.
+            self._remove_from_settings(SCHEDULER)
+        else:
+            assert type(scheduler_conf) == dict
+            # Save scheduler configuration so we can use it later for creating
+            # an object or using it as a historical log.
+            self._settings[SCHEDULER] = scheduler_conf
+        # Reset scheduler of the state so we need to recreate it before fit.
+        self._remove_from_state(SCHEDULER)
+
+    def _create_scheduler(self, optimizer):
+        print("Creating scheduler...")
+        scheduler_conf = self._settings[SCHEDULER]
+        name_or_scheduler = scheduler_conf["name"]
+        params = scheduler_conf.get("params", {})
+        scheduler = create_scheduler(name_or_scheduler,
+                                     optimizer,
+                                     **params)
+        self._state[SCHEDULER] = scheduler
 
     def set_logger(self, logger_conf, **kwargs):
         if bool(kwargs) and type(logger_conf) != dict:
@@ -115,11 +164,28 @@ class Trainer(object):
         self._state[TRAIN_LOGGER] = train_logger
 
     def _create_dl_train(self, X, Y, batch_size):
-        print("Creating data loader for train...")
-        dl_train = get_tensor_data_loader(X, Y,
-                                          batch_size=batch_size,
-                                          shuffle=True)
-        self._state[DL_TRAIN] = dl_train
+        if type(X) == torch.utils.data.dataloader.DataLoader:
+            dl = X
+        else:
+            print("Creating data loader for train...")
+            dl = get_tensor_data_loader(X, Y,
+                                        batch_size=batch_size,
+                                        shuffle=True)
+        self._state[DL_TRAIN] = dl
+
+    def set_loss(self, loss_conf, **kwargs):
+        self._settings[LOSS] = loss_conf
+        self._remove_from_state(LOSS)
+
+    def _create_loss(self):
+        self._state[LOSS] = create_loss(self._settings[LOSS])
+
+    def set_metric(self, metric_conf, **kwargs):
+        self._settings[METRIC] = metric_conf
+        self._remove_from_state(METRIC)
+
+    def _create_metric(self):
+        self._state[METRIC] = create_metric(self._settings[METRIC])
 
     def set_lr(self, lr):
         """Utility function to change the learning rate of an optimizer. """
@@ -143,16 +209,15 @@ class Trainer(object):
         if OPTIMIZER not in self._state:
             self._create_optimizer()
         optimizer = self._state[OPTIMIZER]
-        # TODO: Create LR schedulers after creating optimizer.
-        #if scheduler is not None:
-        #    patience = 10 if scheduler is True else scheduler
-        #    scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, patience=patience, verbose=True)
-        # TODO: Get loss function from a factory method.
-        loss_function = torch.nn.functional.l1_loss
-        self._state[LOSS] = loss_function
-        # TODO: Get metric function from a factory method.
-        metric_function = sklearn.metrics.mean_absolute_error
-        self._state[METRIC] = metric_function
+        # Create LR scheduler (always after creating optimizer).
+        if SCHEDULER in self._settings and SCHEDULER not in self._state:
+            self._create_scheduler(optimizer)
+        # Get loss function from a factory method.
+        if LOSS not in self._state:
+            self._create_loss()
+        # Get metric function from a factory method.
+        if METRIC not in self._state:
+            self._create_metric()
 
     def fit(self,
             data_train_X, data_train_Y=None,
@@ -164,6 +229,7 @@ class Trainer(object):
         self.prepare_for_fit(data_train_X, data_train_Y, batch_size)
         # Set the fit fundamental tools as local variables.
         optimizer = self._state[OPTIMIZER]
+        scheduler = self._state.get(SCHEDULER, None)
         train_logger = self._state[TRAIN_LOGGER]
         dl_train = self._state[DL_TRAIN]
         loss_function = self._state[LOSS]
@@ -203,14 +269,16 @@ class Trainer(object):
                 #y, y_hat = pipe_y.inverse_transform(y), pipe_y.inverse_transform(y_hat)
                 #y, y_hat = y["scalar_coupling_constant"], y_hat["scalar_coupling_constant"]
 
+                if len(Y_hat.shape) > len(Y.shape):
+                    Y_hat = np.argmax(Y_hat, axis=1)
                 metric = metric_function(Y, Y_hat)
-                train_logger.log("Metric", metric)
-                train_logger.log("Loss", loss.item())
+                train_logger.log("metric", metric)
+                train_logger.log("loss", loss.item())
                 batch_size = len(Y_hat)
                 train_logger.end_batch(batch_size)
             train_logger.end_epoch()
-            #if scheduler is not None:
-            #    scheduler.step(train_logger.get_current_loss("j-coupling"))
+            if scheduler is not None:
+                scheduler.step(train_logger.get_metric_by_sample("loss"))
             #if data_loader_val is not None:
             #    print("Validation:")
             #    #self.test(data_loader_val, logger=test_logger)
@@ -224,46 +292,26 @@ class Trainer(object):
             logger = IntervalLogger(epoch_interval=log_epoch_interval,
                                     batch_interval=log_batch_interval)
             logger.init(["j-coupling"], len(data_loader))
+        loss_function = self._state[LOSS]
+        metric_function = self._state[METRIC]
+
         self.eval()
         with torch.no_grad():
-            device = self.get_device()
+            device = self.get_model_device(self.model)
             logger.init_epoch()
-            for batch in data_loader:
+            for X, Y in data_loader:
                 logger.init_batch()
-                batch = batch.to(device)
-                mask = batch.y_mask
-                if self.selected_type is not None:
-                    mask_type = torch.zeros(len(mask), dtype=torch.uint8).to(device)
-                    for i in self.selected_type:
-                        mask_type |= (batch.type == i).view(-1)
-                    mask *= mask_type
-                y_hat = self(batch.x, batch.edge_index, batch.edge_attr, batch.type, mask).view(-1)
-                y = batch.y[mask]
-                loss = torch.nn.functional.l1_loss(y_hat, y, reduction="none")
-                if len(selected_type) > 1:
-                    loss = loss * batch.w[mask]
-                #loss = torch.nn.functional.mse_loss(y_hat, y)
-                loss = loss.mean()
-                y, y_hat = y.detach().cpu().numpy(), y_hat.detach().cpu().numpy()
-                
-                y, y_hat = pd.DataFrame({
-                    "molecule_name": np.nan,
-                    "scalar_coupling_constant": y.ravel(),
-                    "type": batch.type[mask].cpu().numpy().ravel()
-                }), pd.DataFrame({
-                    "molecule_name": np.nan,
-                    "scalar_coupling_constant": y_hat.ravel(),
-                    "type": batch.type[mask].cpu().numpy().ravel()
-                })
-                y, y_hat = pipe_y.inverse_transform(y), pipe_y.inverse_transform(y_hat)
-                y, y_hat = y["scalar_coupling_constant"], y_hat["scalar_coupling_constant"]
-                
-                metrics = sklearn.metrics.mean_absolute_error(y, y_hat)
-                batch_size = len(y_hat)
-                logger.end_batch(batch_size, [loss.item()], [metrics])
+                X, Y = X.to(device), Y.to(device)
+                Y_hat = self.model(X)
+                Y, Y_hat = y.detach().cpu().numpy(), y_hat.detach().cpu().numpy()
+ 
+                metric = metric_function(Y, Y_hat)
+                logger.log("metric", metric)
+                logger.log("loss", loss.item())
+                batch_size = len(Y_hat)
+                logger.end_batch(batch_size)
             logger.end_epoch()
             logger.end()
-        self.test_logger = logger
 
     def predict(self, data):
         # TODO: dynamic batch size and iterate batch and join solutions.
@@ -276,6 +324,8 @@ class Trainer(object):
                 Y_hat = self.model(X)
                 return Y_hat
 
+    def predict_argmax(self, preds):
+        return torch.argmax(preds, axis=1)
 
 def test_model(data_set, plot=False, rescale=True, plot_y=True):
     y, y_hat, mask, t = model.predict(data_set)

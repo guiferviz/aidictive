@@ -11,7 +11,7 @@ class Plot(object):
 def set_backend(backend_name="plotly"):
     global backend
     if backend_name == "plotly":
-        from autoeda.plot import plotly
+        from . import plotly
         backend = plotly
     else:
         raise ValueError(f"Unknown backend name: {backend_name}")

@@ -7,7 +7,8 @@ from aidictive.activations import get as get_activation
 class FFNN(torch.nn.Module):
     """N layers NN for regression. """
 
-    def __init__(self, layers, activations="selu", last_activation="same"):
+    def __init__(self, layers, activations="selu", last_activation="same",
+                 flatten=False):
         super().__init__()
         if type(activations) == str:
             activations = ["linear"] + [activations] * (len(layers) - 2)
@@ -22,6 +23,8 @@ class FFNN(torch.nn.Module):
             activation = get_activation(activations[i])
             if activation is not None:
                 modules.append(activation)
+        if flatten:
+            modules.append(torch.nn.Flatten())
         self.seq = torch.nn.Sequential(*modules)
 
     def forward(self, X):

@@ -14,18 +14,19 @@ class IntervalLogger(BaseLogger):
     def end_epoch(self):
         super().end_epoch()
         if self.log_epoch():
-            print(f"Epoch {self.epoch} ended in {self.end_epoch_time:0.4f}s."
+            print(f"Epoch {self.epoch} ended in {self.epoch_end_time:0.4f}s."
                   f" Batches: {self.batch}.")
             self.log_metrics()
 
     def end_batch(self, samples):
         super().end_batch(samples)
         if self.log_batch():
-            print(f"Batch {self.batch} ended in {self.end_batch_time:0.4f}s.")
+            print(f"Batch {self.batch} ended in {self.batch_end_time:0.4f}s.")
             self.log_metrics()
 
     def log_metrics(self):
-        for metric, value in self.epoch_metrics.items():
+        for metric in self.epoch_metrics:
+            value = self.get_metric_by_sample(metric)
             print(f"{metric}:\t{value}")
 
     def log_epoch(self):

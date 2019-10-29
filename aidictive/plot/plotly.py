@@ -1,12 +1,10 @@
 
-import plotly.plotly as py
-import plotly.graph_objs as go
-from plotly.offline import plot
-from plotly.offline import iplot
-from plotly.offline import init_notebook_mode
+import chart_studio.plotly as py
+import plotly.graph_objects as go
+import plotly.io as pio
 
-from autoeda.plot import Plot
-from autoeda.utils import is_jupyter_notebook
+from ..plot import Plot
+from ..utils import is_jupyter_notebook
 
 
 DEFAULT_LAYOUT = {
@@ -15,7 +13,7 @@ DEFAULT_LAYOUT = {
 
 
 if is_jupyter_notebook():
-    init_notebook_mode(connected=True)
+    pass#init_notebook_mode(connected=True)
 
 
 class PlotlyPlot(Plot):
@@ -78,8 +76,7 @@ class PlotlyPlot(Plot):
         return html
 
     def _repr_html_(self):
-        info = self.get_dict()
-        iplot(info)
+        pio.show(self.get_dict())
 
     def save(self, filename="plot.html", auto_open=True,
              include_plotlyjs=True, **kwargs):

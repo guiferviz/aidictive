@@ -11,15 +11,15 @@ _OPTIMIZERS = {
 }
 
 
-def add(name_or_object, obj):
+def add(name, obj):
     """Add an optimizer to the library so you can use it as str.
     
     raise: Exception if the given object is not a `torch.optim.optimizer`.
     """
 
-    if not isinstance(name_or_object, torch.optim.Optimizer):
+    if not isinstance(name, torch.optim.Optimizer):
         raise Exception(f"Expecting an optimizer, get {type(obj)}")
-    _OPTIMIZERS[name_or_object] = obj
+    _OPTIMIZERS[name] = obj
 
 
 def get(name_or_object):

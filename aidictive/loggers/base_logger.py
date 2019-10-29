@@ -48,14 +48,14 @@ class BaseLogger(object):
             self.epoch_metrics[k] = value * samples + last_value
 
     def end_epoch(self):
-        self.end_epoch_time = time.time() - self.epoch_init_time
+        self.epoch_end_time = time.time() - self.epoch_init_time
         # Normalize all total metrics by number of samples.
-        self.epoch_metrics = {
+        epoch_metrics = {
                 k: self.get_metric_by_sample(k) for k in self.epoch_metrics}
         # Add extra information to the metric dict before saving it.
-        self.epoch_metrics["epoch"] = self.epoch
+        epoch_metrics["epoch"] = self.epoch
         # Keep metrics dict as historic data.
-        self.epoch_metrics_hist.append(self.epoch_metrics)
+        self.epoch_metrics_hist.append(epoch_metrics)
 
     def get_metric_by_sample(self, target_name):
         return self.epoch_metrics[target_name] / self.epoch_samples
