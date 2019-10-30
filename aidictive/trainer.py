@@ -32,7 +32,14 @@ METRIC = "metric"
 DEFAULT_OPTIMIZER = dict(
     name="radam"
 )
-DEFAULT_LOGGER = dict(
+DEFAULT_TRAIN_LOGGER = dict(
+    name="interval",
+    params=dict(
+        epoch_interval=1,
+        batch_interval=1e100,
+    )
+)
+DEFAULT_TEST_LOGGER = dict(
     name="interval",
     params=dict(
         epoch_interval=1,
@@ -72,7 +79,8 @@ class Trainer(object):
         self._settings = {}
         self.set_optimizer(DEFAULT_OPTIMIZER)
         self.set_scheduler(DEFAULT_SCHEDULER)
-        self.set_logger(DEFAULT_LOGGER)
+        self.set_train_logger(DEFAULT_TRAIN_LOGGER)
+        self.set_test_logger(DEFAULT_TEST_LOGGER)
 
     def _remove_from_state(self, key):
         """Safety removes a key from the state dict.
@@ -150,7 +158,7 @@ class Trainer(object):
                                      **params)
         self._state[SCHEDULER] = scheduler
 
-    def set_logger(self, logger_conf, **kwargs):
+    def _set_logger(self, key, logger_conf, **kwargs):
         if bool(kwargs) and type(logger_conf) != dict:
             logger_conf = dict(
                 name=logger_conf,
@@ -159,25 +167,32 @@ class Trainer(object):
         assert type(logger_conf) == dict
         # Save logger configuration so we can used later for creating and
         # object or using it as a historical log.
-        self._settings[TRAIN_LOGGER] = logger_conf
+        self._settings[key] = logger_conf
         # Removing logger from the state so we need to recreate it before fit.
-        self._remove_from_state(TRAIN_LOGGER)
+        self._remove_from_state(key)
 
-    def _create_logger(self, total_samples):
+    def set_train_logger(self, logger_conf, **kwargs):
+        self._set_logger(TRAIN_LOGGER, logger_conf, **kwargs)
+
+    def set_test_logger(self, logger_conf, **kwargs):
+        self._set_logger(TEST_LOGGER, logger_conf, **kwargs)
+
+    def _create_logger(self, key_settings, key_state, total_samples):
         print("Creating logger...")
-        logger_conf = self._settings[TRAIN_LOGGER]
+        logger_conf = self._settings[key_settings]
         name_or_logger = logger_conf["name"]
         params = logger_conf.get("params", {})
         logger = create_logger(name_or_logger,
                                total_samples,
                                **params)
-        return logger
+        self._state[key_state] = logger
 
     def _create_train_logger(self, total_samples):
-        self._state[TRAIN_LOGGER] = self._create_logger(total_samples)
+        self._create_logger(TRAIN_LOGGER, TRAIN_LOGGER, total_samples)
 
-    def _create_train_logger(self, total_samples):
-        self._state[TRAIN_LOGGER] = self._create_logger(total_samples)
+    def _create_test_logger(self, total_samples, during_train=False):
+        settings = TRAIN_LOGGER if during_train else TEST_LOGGER
+        self._create_logger(settings, TEST_LOGGER, total_samples)
 
     def set_loss(self, loss_conf, **kwargs):
         self._settings[LOSS] = loss_conf
@@ -196,8 +211,11 @@ class Trainer(object):
     def set_lr(self, lr):
         """Utility function to change the learning rate of an optimizer. """
 
-        for i in self._state[OPTIMIZER].param_groups:
-            i["lr"] = lr
+        if OPTIMIZER in self._state:
+            for i in self._state[OPTIMIZER].param_groups:
+                i["lr"] = lr
+        else:
+            self._settings[OPTIMIZER]["params"]["lr"] = lr
 
     def set_train_data(self, *args, **kwargs):
         self._set_data(DL_TRAIN, *args,**kwargs)
@@ -232,7 +250,6 @@ class Trainer(object):
                 # Same training data, not remove from state.
                 return
         # Different or new training data, update settings and state.
-        print("REMOVING from the state")
         self._settings[key] = new_s
         self._remove_from_state(key)
 
@@ -265,6 +282,8 @@ class Trainer(object):
         # Create train and test loggers.
         if TRAIN_LOGGER not in self._state:
             self._create_train_logger(len(dl_train))
+        #if TEST_LOGGER not in self._state:
+        #    self._create_test_logger(len(dl_val), during_train=True)
         # Create optimizer if needed.
         if OPTIMIZER not in self._state:
             self._create_optimizer()
@@ -282,7 +301,7 @@ class Trainer(object):
     def fit(self,
             data_train_X, data_train_Y=None, batch_size=None,
             data_val_X=None, data_val_Y=None, batch_size_val=None,
-            n_epochs=2):
+            n_epochs=1):
         """Train a PyTorch complex model using a SKLearn simple API. """
 
         # Set a new training and test data if needed.
@@ -357,8 +376,8 @@ class Trainer(object):
             self._create_dl_test()
         dl_test = self._state[DL_TEST]
         # Create test logger.
-        #if TEST_LOGGER not in self._state:
-        #    self._create_test_logger(len(dl_test))
+        if TEST_LOGGER not in self._state:
+            self._create_test_logger(len(dl_test))
         # Get loss function from a factory method.
         if LOSS not in self._state:
             self._create_loss()
@@ -383,10 +402,10 @@ class Trainer(object):
         # Test loop. #
         ##############
         device = utils.get_model_device(self.model)
-        self.eval()
+        self.model.eval()
         with torch.no_grad():
             test_logger.init_epoch()
-            for X, Y in dl_train:
+            for X, Y in dl_test:
                 test_logger.init_batch()
                 X, Y = X.to(device), Y.to(device)
                 Y_hat = self.model(X)

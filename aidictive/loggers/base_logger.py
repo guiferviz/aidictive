@@ -21,9 +21,15 @@ class BaseLogger(object):
     def end(self):
         pass
 
-    def init_epoch(self):
+    def init_epoch(self, epoch=None):
         self.epoch_init_time = time.time()
-        self.epoch += 1
+        if epoch is None:
+            self.epoch += 1
+        else:
+            # Ensure that you are always increasing the epoch number and
+            # you are not "traveling in time" :)
+            assert epoch > self.epoch
+            self.epoch = epoch
         self.epoch_samples = 0
         # Reset batch counter.
         self.batch = 0
