@@ -3,7 +3,28 @@ import fnmatch
 
 
 def default_params(fun_kwargs, default_dict=None, **kwargs):
-    """Add to kwargs and/or default_dict the values of fun_kwargs. """
+    """Add to kwargs and/or default_dict the values of fun_kwargs.
+    
+    This function allows the user to overwrite default values of some
+    parameters. For example, in the next example the user cannot give a value
+    to the param `a` because you will be passing the param `a` twice to the
+    function `another_fun`::
+
+        >>> def fun(**kwargs):
+        ...     return another_fun(a="a", **kwargs)
+
+    You can solve this in two ways. The fist one::
+
+        >>> def fun(a="a", **kwargs):
+        ...     return another_fun(a=a, **kwargs)
+ 
+    Or using default_params::
+
+        >>> def fun(**kwargs):
+        ...    kwargs = default_params(kwargs, a="a")
+        ...    return another_fun(**kwargs)
+    """
+
     if default_dict is None:
         default_dict = kwargs
     else:
@@ -162,4 +183,27 @@ def is_jupyter_notebook():
         # If get_ipython() is not defined we are probably
         # in standard Python.
         return False, "standard_python?"
+
+
+def is_categorical(s, column=None):
+    """Check if a pandas Series or a column in a DataFrame is categorical.
+    
+    s (pandas.Series or pandas.DataFrame): Series to check or dataframe with
+        column to check.
+    column (str): Column name. If a column name is given it is assumed that
+        `s` is a `pandas.DataFrame`.
+    """
+
+    if column is not None:
+        # s is not a Series, it is a DataFrame.
+        s = s[column]
+    return s.dtype.name == "category"
+
+
+def get_model_device(model):
+    """Return the device in which a model is located.
+    
+    Important! It assumes all parameters are in the same device.
+    """
+    return next(model.parameters()).device
 

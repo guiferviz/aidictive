@@ -8,9 +8,10 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 
-class AugmentedConv(nn.Module):
-    def __init__(self, in_channels, out_channels, kernel_size, dk, dv, Nh, shape=0, relative=False, stride=1):
-        super(AugmentedConv, self).__init__()
+class AugmentedConv2d(nn.Module):
+    def __init__(self, in_channels, out_channels, kernel_size, dk, dv, Nh,
+                 shape=0, relative=False, stride=1):
+        super().__init__()
         self.in_channels = in_channels
         self.out_channels = out_channels
         self.kernel_size = kernel_size

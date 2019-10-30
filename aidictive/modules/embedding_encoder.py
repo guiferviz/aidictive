@@ -1,38 +1,86 @@
 
-from torch import nn
+import numpy as np
+
+import torch
 from torch.nn.parameter import Parameter
 
+from ..utils import is_categorical
+from ..init import initialize
+from ..plot import scatter_reduce
 
-class EmbeddingEncoder(nn.Embedding, Encoder):
 
-    def __init__(self, df, metadata_dict, labels=None):
-        metadata_dict = EMBEDDING_SCHEMA.validate(metadata_dict)
-        num_embeddings = len(df[metadata_dict["name"]].cat.categories)
-        embedding_size = metadata_dict["embedding_size"]
+DEFAULT_INITIALIZER = dict(
+    name="truncated_normal",
+    params=dict(
+        std=0.01
+    )
+)
+
+
+class EmbeddingEncoder(torch.nn.Embedding):
+
+    def from_df(cls, df, column, embedding_size=None, **kwargs):
+        """Create and EmbeddingEncoder using a dataframe category column.
+
+        **kwargs: any parameter of the EmbeddingEncoder constructor other than
+            the labels. The labels are taken from the category, if you want
+            to specify your own labels use the default constructor.
+        """
+
+        assert is_categorical(df, column)
+        num_embeddings = len(df[column].cat.categories)
+        labels = df[column].cat.categories
+        return EmbeddingEncoder(num_embeddings, embedding_size=embedding_size,
+                                labels=labels, **kwargs)
+
+    def __init__(self, num_embeddings, embedding_size=None, labels=None,
+                 initializer=None, dropout=None, **kwargs):
+        """An enhanced version of `torch.nn.Embedding`.
+
+        num_embeddings (int): cardinality of the categorical value that you
+            want to embed.
+        embedding_size (int): dimension of the embedding.
+            If not size is specify we assing an embedding size using the
+            expression: `min(ceil(sqrt(num_embeddings)), 50)`.
+            The authors of the entity embeddings paper
+            (https://arxiv.org/abs/1604.06737) use: `num_embeddings - 1`
+            as a default dimension of the embeddings.
+        labels (list): Name of the categories. The length of the list should
+            be `num_embeddings`.
+        dropout (`None` or a float in the interval `(0, 1)`): Indicates the
+            quantity of dropout to apply to the embeddings.
+        initializer (str or dict): Initializer function used in the embedding
+            weights.
+        """
+
         if embedding_size is None:
-            embedding_size = int(np.ceil(np.sqrt(num_embeddings)))
+            embedding_size = min(int(np.ceil(np.sqrt(num_embeddings))), 50)
         super().__init__(num_embeddings, embedding_size)
-        init_range = metadata_dict["embedding_init_range"]
-        if init_range is not None:
-            self.weight.data.uniform_(-init_range, init_range)
+
+        if initializer is None:
+            initializer = DEFAULT_INITIALIZER
         if labels is None:
-            labels = df[metadata_dict["name"]].cat.categories
-        dropout = metadata_dict["embedding_dropout"]
-        if dropout is not None:
-            dropout = nn.Dropout(dropout)
+            # Use index as labels if not labels are defined.
+            labels = np.arange(num_embeddings)
+        if bool(dropout):
+            dropout = torch.nn.Dropout(dropout)
             self.add_module("embedding_dropout", dropout)
+        # Save properties.
         self.set_labels(labels)
         self.dropout = dropout
+        self.initializer = initializer
+        # Init weights.
         self.init_weights()
 
     def init_weights(self):
         with torch.no_grad():
-            trunc_normal_(self.weight, std=0.01)
+            initialize(self.weight, self.initializer)
 
     def forward(self, x):
+        emb = super().forward(x)
         if self.dropout is not None:
-            return self.dropout(super().forward(x))
-        return super().forward(x)
+            return self.dropout(emb)
+        return emb
 
     def set_labels(self, labels):
         assert len(labels) == self.num_embeddings
@@ -46,7 +94,7 @@ class EmbeddingEncoder(nn.Embedding, Encoder):
 
         It also updates the number of embeddings and the embedding size.
 
-        WARNING: this way to update the weights is probably not correct,
+        FIXME: this way to update the weights is probably not correct,
             but it works for inference. Be careful if you want to train
             the network after this, maybe the learner (adam, sgd...)
             needs to be updated with the new parameters.
@@ -56,13 +104,23 @@ class EmbeddingEncoder(nn.Embedding, Encoder):
         self.weight = Parameter(w)
 
     def save_weights(self, filename):
+        """Save the embedding weights to a file using torch. """
+
         torch.save(self.weight, filename)
 
-    def get_labels(self):
-        return self.labels
-
     def get_gensim_model(self):
+        """Return a gensim model initialized with the current weights.
+
+        You can use gensim to query the embedding space: find most similar
+        embeddings using cosine distance, perform embedding arithmetic
+        (like the very famouse "king - man + woman = queen"), finding the
+        intruder embedding...
+
+        raise: If gensim is not installed, raise an exception.
+        """
+
         from gensim.models import KeyedVectors
+
         model = KeyedVectors(self.embedding_dim)
         model.add(self.labels, self.get_weights().cpu().numpy())
         return model
@@ -74,17 +132,8 @@ class EmbeddingEncoder(nn.Embedding, Encoder):
     def shape(self):
         return [self.num_embeddings, self.embedding_dim]
 
+    def plot(self, hoverinfo="text", **kwargs):
+        w = self.get_weights().cpu().numpy()
+        text = self.labels
+        return scatter_reduce(w, text=text, hoverinfo=hoverinfo, **kwargs)
 
-def trunc_normal_(tensor, mean=0.0, std=1.0):
-    """Truncated normal.
-
-    Taken from:
-    https://discuss.pytorch.org/t/implementing-truncated-normal-initializer/4778/12
-    """
-    size = tensor.shape
-    tmp = tensor.new_empty(size + (4,)).normal_()
-    valid = (tmp < 2) & (tmp > -2)
-    ind = valid.max(-1, keepdim=True)[1]
-    tensor.data.copy_(tmp.gather(-1, ind).squeeze(-1))
-    tensor.data.mul_(std).add_(mean)
-    return tensor

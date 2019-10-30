@@ -1,4 +1,7 @@
 
+import operator
+import warnings
+
 import numpy as np
 
 import sklearn
@@ -6,6 +9,7 @@ import sklearn.metrics
 
 import torch
 
+from . import utils
 from .optimizers import create as create_optim
 from .loggers import create as create_logger
 from .data import get_tensor_data_loader
@@ -14,10 +18,20 @@ from .losses import get as create_loss
 from .metrics import get as create_metric
 
 
+# Keys used to store settings and object on settings and state dict.
+OPTIMIZER = "optimizer"
+SCHEDULER = "scheduler"
+TRAIN_LOGGER = "train_logger"
+TEST_LOGGER = "test_logger"
+DL_TRAIN = "dl_train"
+DL_TEST = "dl_test"
+LOSS = "loss"
+METRIC = "metric"
+
+# Default configurations.
 DEFAULT_OPTIMIZER = dict(
     name="radam"
 )
-
 DEFAULT_LOGGER = dict(
     name="interval",
     params=dict(
@@ -25,7 +39,6 @@ DEFAULT_LOGGER = dict(
         batch_interval=1e100,
     )
 )
-
 DEFAULT_SCHEDULER = dict(
     name="reducelronplateau",
     params=dict(
@@ -34,13 +47,15 @@ DEFAULT_SCHEDULER = dict(
         verbose=True,
     )
 )
-
-OPTIMIZER = "optimizer"
-SCHEDULER = "scheduler"
-TRAIN_LOGGER = "train_logger"
-DL_TRAIN = "dl_train"
-LOSS = "loss"
-METRIC = "metric"
+DEFAULT_DL_PARAMS = {
+    DL_TRAIN: dict(
+        batch_size=32,
+        shuffle=True,
+    ),
+    DL_TEST: dict(
+        batch_size=128,
+    )
+}
 
 
 class Trainer(object):
@@ -82,11 +97,6 @@ class Trainer(object):
         """
 
         return dic.pop(key, None) is not None
-
-    def get_model_device(self, model):
-        # TODO: move this method to utils.
-        # Assumes all parameters are in the same device.
-        return next(model.parameters()).device
 
     def set_optimizer(self, optimizer_conf, **kwargs):
         if bool(kwargs) and type(optimizer_conf) != dict:
@@ -153,25 +163,21 @@ class Trainer(object):
         # Removing logger from the state so we need to recreate it before fit.
         self._remove_from_state(TRAIN_LOGGER)
 
-    def _create_train_logger(self, total_samples):
-        print("Creating train logger...")
-        logger_conf = self._settings["train_logger"]
+    def _create_logger(self, total_samples):
+        print("Creating logger...")
+        logger_conf = self._settings[TRAIN_LOGGER]
         name_or_logger = logger_conf["name"]
         params = logger_conf.get("params", {})
-        train_logger = create_logger(name_or_logger,
-                                     total_samples,
-                                     **params)
-        self._state[TRAIN_LOGGER] = train_logger
+        logger = create_logger(name_or_logger,
+                               total_samples,
+                               **params)
+        return logger
 
-    def _create_dl_train(self, X, Y, batch_size):
-        if type(X) == torch.utils.data.dataloader.DataLoader:
-            dl = X
-        else:
-            print("Creating data loader for train...")
-            dl = get_tensor_data_loader(X, Y,
-                                        batch_size=batch_size,
-                                        shuffle=True)
-        self._state[DL_TRAIN] = dl
+    def _create_train_logger(self, total_samples):
+        self._state[TRAIN_LOGGER] = self._create_logger(total_samples)
+
+    def _create_train_logger(self, total_samples):
+        self._state[TRAIN_LOGGER] = self._create_logger(total_samples)
 
     def set_loss(self, loss_conf, **kwargs):
         self._settings[LOSS] = loss_conf
@@ -193,14 +199,68 @@ class Trainer(object):
         for i in self._state[OPTIMIZER].param_groups:
             i["lr"] = lr
 
-    def prepare_for_fit(self,
-                        data_train_X, data_train_Y=None, batch_size=32):
+    def set_train_data(self, *args, **kwargs):
+        self._set_data(DL_TRAIN, *args,**kwargs)
+
+    def set_test_data(self, *args, **kwargs):
+        self._set_data(DL_TEST, *args, **kwargs)
+
+    def _set_data(self, key, X, Y=None, **dl_params):
+        only_X = False
+        if X is None:
+            # Nothing to do here. If the data is required (like training set
+            # for fitting) you will get an error later.
+            return
+        elif type(X) == dict:
+            new_s = X
+            only_X = True
+        elif type(X) == torch.utils.data.dataloader.DataLoader:
+            new_s = dict(dl=X)
+            only_X = True
+        else:
+            dl_params_default = DEFAULT_DL_PARAMS[key].copy()
+            dl_params.update(dl_params_default)
+            new_s = dict(X=X, Y=Y, dl_params=dl_params)
+        # If all your data is in X, check that you are not using any other of
+        # the params to avoid errors.
+        if only_X and (any(dl_params.values()) or Y is not None):
+            warnings.warn("You are already using a data loader as data source,"
+                          f" ignoring given data loader params: {dl_params}")
+        if key in self._settings:
+            old_s = self._settings[key]
+            if operator.eq(new_s, old_s):
+                # Same training data, not remove from state.
+                return
+        # Different or new training data, update settings and state.
+        print("REMOVING from the state")
+        self._settings[key] = new_s
+        self._remove_from_state(key)
+
+    def _create_dl(self, dl_settings):
+        if "dl" in dl_settings:
+            return dl_settings["dl"]
+
+        print("Creating data loader...")
+        X, Y = dl_settings["X"], dl_settings["Y"]
+        dl_params = dl_settings.get("dl_params", {})
+        return get_tensor_data_loader(X, Y, **dl_params)
+
+    def _create_dl_train(self):
+        dl_train_settings = self._settings[DL_TRAIN]
+        self._state[DL_TRAIN] = self._create_dl(dl_train_settings)
+
+    def _create_dl_test(self):
+        dl_test_settings = self._settings[DL_TEST]
+        self._state[DL_TEST] = self._create_dl(dl_test_settings)
+
+    def prepare_for_fit(self):
         """Creates all the objects needed for training using the settings. """
 
         # Create data loaders if needed.
         if DL_TRAIN not in self._state:
-            self._create_dl_train(data_train_X, data_train_Y,
-                                  batch_size=batch_size)
+            if DL_TRAIN not in self._settings:
+                raise Exception("I need traning data to learn something!")
+            self._create_dl_train()
         dl_train = self._state[DL_TRAIN]
         # Create train and test loggers.
         if TRAIN_LOGGER not in self._state:
@@ -220,13 +280,16 @@ class Trainer(object):
             self._create_metric()
 
     def fit(self,
-            data_train_X, data_train_Y=None,
-            data_val_X=None, data_val_Y=None,
-            n_epochs=2,
-            batch_size=32):
+            data_train_X, data_train_Y=None, batch_size=None,
+            data_val_X=None, data_val_Y=None, batch_size_val=None,
+            n_epochs=2):
         """Train a PyTorch complex model using a SKLearn simple API. """
 
-        self.prepare_for_fit(data_train_X, data_train_Y, batch_size)
+        # Set a new training and test data if needed.
+        self.set_train_data(data_train_X, data_train_Y, batch_size=batch_size)
+        self.set_test_data(data_val_X, data_val_Y, batch_size=batch_size_val)
+        # Using the settings, create all the objects needed for training.
+        self.prepare_for_fit()
         # Set the fit fundamental tools as local variables.
         optimizer = self._state[OPTIMIZER]
         scheduler = self._state.get(SCHEDULER, None)
@@ -238,7 +301,7 @@ class Trainer(object):
         ###############
         # Train loop. #
         ###############
-        device = self.get_model_device(self.model)
+        device = utils.get_model_device(self.model)
         self.model.train()
         for n_epoch in range(1, n_epochs + 1):
             train_logger.init_epoch()
@@ -286,32 +349,59 @@ class Trainer(object):
             #    self.train()
         train_logger.end()
 
-    def test(self, data_loader,
-             logger=None, log_epoch_interval=1, log_batch_interval=1e100):
-        if logger == None:
-            logger = IntervalLogger(epoch_interval=log_epoch_interval,
-                                    batch_interval=log_batch_interval)
-            logger.init(["j-coupling"], len(data_loader))
+    def prepare_for_test(self):
+        # Create data loaders if needed.
+        if DL_TEST not in self._state:
+            if DL_TEST not in self._settings:
+                raise Exception("I need test data to test something!")
+            self._create_dl_test()
+        dl_test = self._state[DL_TEST]
+        # Create test logger.
+        #if TEST_LOGGER not in self._state:
+        #    self._create_test_logger(len(dl_test))
+        # Get loss function from a factory method.
+        if LOSS not in self._state:
+            self._create_loss()
+        # Get metric function from a factory method.
+        if METRIC not in self._state:
+            self._create_metric()
+
+    def test(self, data_test_X, data_test_Y=None, batch_size=None):
+        """Test your model easily with this method. """
+
+        # Set test data if needed.
+        self.set_test_data(data_test_X, data_test_Y, batch_size=batch_size)
+        # Create all objects needed for test.
+        self.prepare_for_test()
+        # Set the test fundamental tools as local variables.
+        test_logger = self._state[TEST_LOGGER]
+        dl_test = self._state[DL_TEST]
         loss_function = self._state[LOSS]
         metric_function = self._state[METRIC]
 
+        ##############
+        # Test loop. #
+        ##############
+        device = utils.get_model_device(self.model)
         self.eval()
         with torch.no_grad():
-            device = self.get_model_device(self.model)
-            logger.init_epoch()
-            for X, Y in data_loader:
-                logger.init_batch()
+            test_logger.init_epoch()
+            for X, Y in dl_train:
+                test_logger.init_batch()
                 X, Y = X.to(device), Y.to(device)
                 Y_hat = self.model(X)
-                Y, Y_hat = y.detach().cpu().numpy(), y_hat.detach().cpu().numpy()
+                loss = loss_function(Y_hat, Y)
+                Y, Y_hat = Y.detach().cpu().numpy(), Y_hat.detach().cpu().numpy()
  
+                if len(Y_hat.shape) > len(Y.shape):
+                    Y_hat = np.argmax(Y_hat, axis=1)
                 metric = metric_function(Y, Y_hat)
-                logger.log("metric", metric)
-                logger.log("loss", loss.item())
+                test_logger.log("metric", metric)
+                test_logger.log("loss", loss.item())
                 batch_size = len(Y_hat)
-                logger.end_batch(batch_size)
-            logger.end_epoch()
-            logger.end()
+                test_logger.end_batch(batch_size)
+            test_logger.end_epoch()
+            test_logger.end()
 
     def predict(self, data):
         # TODO: dynamic batch size and iterate batch and join solutions.

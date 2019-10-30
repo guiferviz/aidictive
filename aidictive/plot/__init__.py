@@ -80,16 +80,11 @@ def _get_reducer(reducer):
     return reducer
 
 
-def scatter_reduce(matrix, reducer="tsne", **kwargs):
+def scatter_reduce(matrix, reducer="pca", **kwargs):
     x, y = reduce(matrix, reducer=reducer)
     return scatter(x, y, **kwargs)
 
 
-def scatter_plot_embeddings(embedding_encoder, **kwargs):
-    w = embedding_encoder.get_weights().cpu().numpy()
-    text = embedding_encoder.get_labels()
-    scatter_reduce(w, text=text, **kwargs)
-
-
 backend = None
 set_backend()
+
