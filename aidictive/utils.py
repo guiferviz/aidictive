@@ -1,5 +1,10 @@
 
 import fnmatch
+import random
+
+import numpy as np
+
+import torch
 
 
 def default_params(fun_kwargs, default_dict=None, **kwargs):
@@ -206,4 +211,20 @@ def get_model_device(model):
     Important! It assumes all parameters are in the same device.
     """
     return next(model.parameters()).device
+
+
+def seed(s, gpu=False):
+    """Set random seed in numpy, torch and python random module.
+    
+    gpu (bool): If `True`, this method will make the GPU deterministic for
+        reproductivility. This option affect the performance.
+        More info: https://pytorch.org/docs/stable/notes/randomness.html
+    """
+
+    random.seed(s)
+    np.random.seed(s)
+    torch.manual_seed(s)
+    if gpu:
+        torch.backends.cudnn.deterministic = True
+        torch.backends.cudnn.benchmark = False
 

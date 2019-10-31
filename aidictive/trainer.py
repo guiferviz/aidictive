@@ -78,7 +78,7 @@ class Trainer(object):
         # Create settings with default values.
         self._settings = {}
         self.set_optimizer(DEFAULT_OPTIMIZER)
-        self.set_scheduler(DEFAULT_SCHEDULER)
+        self.set_scheduler(None)
         self.set_train_logger(DEFAULT_TRAIN_LOGGER)
         self.set_test_logger(DEFAULT_TEST_LOGGER)
 
@@ -107,7 +107,7 @@ class Trainer(object):
         return dic.pop(key, None) is not None
 
     def set_optimizer(self, optimizer_conf, **kwargs):
-        if bool(kwargs) and type(optimizer_conf) != dict:
+        if type(optimizer_conf) != dict:
             optimizer_conf = dict(
                 name=optimizer_conf,
                 params=kwargs,
@@ -224,6 +224,7 @@ class Trainer(object):
         self._set_data(DL_TEST, *args, **kwargs)
 
     def _set_data(self, key, X, Y=None, **dl_params):
+        # TODO: bug when X is a pytorch dataset. FIXME!!!!
         only_X = False
         if X is None:
             # Nothing to do here. If the data is required (like training set
@@ -232,13 +233,16 @@ class Trainer(object):
         elif type(X) == dict:
             new_s = X
             only_X = True
-        elif type(X) == torch.utils.data.dataloader.DataLoader:
+        elif isinstance(X, torch.utils.data.dataloader.DataLoader):
             new_s = dict(dl=X)
+            only_X = True
+        elif isinstance(X, torch.utils.data.dataset.Dataset):
+            new_s = dict(ds=X)
             only_X = True
         else:
             dl_params_default = DEFAULT_DL_PARAMS[key].copy()
-            dl_params.update(dl_params_default)
-            new_s = dict(X=X, Y=Y, dl_params=dl_params)
+            dl_params_default.update(dl_params)
+            new_s = dict(X=X, Y=Y, dl_params=dl_params_default)
         # If all your data is in X, check that you are not using any other of
         # the params to avoid errors.
         if only_X and (any(dl_params.values()) or Y is not None):
@@ -299,7 +303,7 @@ class Trainer(object):
             self._create_metric()
 
     def fit(self,
-            data_train_X, data_train_Y=None, batch_size=None,
+            data_train_X=None, data_train_Y=None, batch_size=None,
             data_val_X=None, data_val_Y=None, batch_size_val=None,
             n_epochs=1):
         """Train a PyTorch complex model using a SKLearn simple API. """
@@ -361,6 +365,8 @@ class Trainer(object):
             train_logger.end_epoch()
             if scheduler is not None:
                 scheduler.step(train_logger.get_metric_by_sample("loss"))
+            # TODO: validation error measure. Create a new method using the
+            # same logger.
             #if data_loader_val is not None:
             #    print("Validation:")
             #    #self.test(data_loader_val, logger=test_logger)
@@ -427,7 +433,7 @@ class Trainer(object):
         dl = get_tensor_data_loader(data, batch_size=1000000)
         self.model.eval()
         with torch.no_grad():
-            device = self.get_model_device(self.model)
+            device = utils.get_model_device(self.model)
             for X, in dl:
                 X = X.to(device)
                 Y_hat = self.model(X)

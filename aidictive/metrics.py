@@ -4,6 +4,7 @@ import sklearn
 
 _METRICS = {
     "mse": sklearn.metrics.mean_squared_error,
+    "mae": sklearn.metrics.mean_absolute_error,
     "mean_squared_error": sklearn.metrics.mean_squared_error,
     "accuracy": sklearn.metrics.accuracy_score,
     "auc": sklearn.metrics.auc,
