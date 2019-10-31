@@ -1,6 +1,6 @@
 
-from .base_logger import BaseLogger
-from .interval_logger import IntervalLogger
+from aidictive.loggers.base_logger import BaseLogger
+from aidictive.loggers.interval_logger import IntervalLogger
 
 
 _LOGGERS = {

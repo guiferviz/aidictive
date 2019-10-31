@@ -9,13 +9,13 @@ import sklearn.metrics
 
 import torch
 
-from . import utils
-from .optimizers import create as create_optim
-from .loggers import create as create_logger
-from .data import get_tensor_data_loader
-from .schedulers import create as create_scheduler
-from .losses import get as create_loss
-from .metrics import get as create_metric
+from aidictive import utils
+from aidictive.optimizers import create as create_optim
+from aidictive.loggers import create as create_logger
+from aidictive.data import get_tensor_data_loader
+from aidictive.schedulers import create as create_scheduler
+from aidictive.losses import get as create_loss
+from aidictive.metrics import get as create_metric
 
 
 # Keys used to store settings and object on settings and state dict.
@@ -391,7 +391,7 @@ class Trainer(object):
         if METRIC not in self._state:
             self._create_metric()
 
-    def test(self, data_test_X, data_test_Y=None, batch_size=None):
+    def test(self, data_test_X=None, data_test_Y=None, batch_size=None):
         """Test your model easily with this method. """
 
         # Set test data if needed.

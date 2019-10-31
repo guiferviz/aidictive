@@ -1,5 +1,5 @@
 
-from .base_logger import BaseLogger
+from aidictive.loggers.base_logger import BaseLogger
 
 
 class IntervalLogger(BaseLogger):

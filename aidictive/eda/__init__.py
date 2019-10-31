@@ -1,8 +1,8 @@
 
 import numpy as np
 
-from .. import plot
-from .. import utils
+from aidictive import plot
+from aidictive import utils
 
 
 def value_counts(s, dropna=False, top=None, relative=False,

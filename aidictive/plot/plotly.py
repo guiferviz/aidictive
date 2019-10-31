@@ -3,8 +3,8 @@ import chart_studio.plotly as py
 import plotly.graph_objects as go
 import plotly.io as pio
 
-from ..plot import Plot
-from ..utils import is_jupyter_notebook
+from aidictive.plot import Plot
+from aidictive.utils import is_jupyter_notebook
 
 
 DEFAULT_LAYOUT = {

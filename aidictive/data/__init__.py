@@ -3,7 +3,7 @@ import numpy as np
 
 import torch
 
-from .datasets import mnist, mnist_datasets, mnist_data_loaders
+from aidictive.data.datasets import mnist, mnist_datasets, mnist_data_loaders
 
 
 def get_tensor_data_loader(*args, **kwargs):

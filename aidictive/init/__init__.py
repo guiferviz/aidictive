@@ -1,7 +1,7 @@
 
 import torch
 
-from .truncated_normal import truncated_normal_
+from aidictive.init.truncated_normal import truncated_normal_
 
 
 _INIT = {

@@ -3,9 +3,9 @@ import inspect
 
 import pandas as pd
 
-from . import plot
-from . import eda
-from . import utils
+from aidictive import plot
+from aidictive import eda
+from aidictive import utils
 
 
 SERIES_ACCESSOR_NAME = "aidictive"

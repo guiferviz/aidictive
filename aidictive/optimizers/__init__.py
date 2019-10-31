@@ -1,7 +1,7 @@
 
 import torch
 
-from .radam import RAdam
+from aidictive.optimizers.radam import RAdam
 
 
 _OPTIMIZERS = {

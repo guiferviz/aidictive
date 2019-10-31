@@ -5,5 +5,5 @@ implementations, interactive visualizations...
 """
 
 
-from .paint import NotebookPainter
+from aidictive.demos.paint import NotebookPainter
 

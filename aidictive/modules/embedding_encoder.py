@@ -4,9 +4,9 @@ import numpy as np
 import torch
 from torch.nn.parameter import Parameter
 
-from ..utils import is_categorical
-from ..init import initialize
-from ..plot import scatter_reduce
+from aidictive.utils import is_categorical
+from aidictive.init import initialize
+from aidictive.plot import scatter_reduce
 
 
 DEFAULT_INITIALIZER = dict(

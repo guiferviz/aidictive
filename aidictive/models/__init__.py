@@ -1,4 +1,4 @@
 
-from .ffnn import FFNN
-from .resnets import resnet, resnet18
+from aidictive.models.ffnn import FFNN
+from aidictive.models.resnets import resnet, resnet18
 
