@@ -2,7 +2,7 @@
 from os import listdir
 from os.path import join
 
-from setuptools import setup
+from setuptools import setup, find_packages
 try: # for pip >= 10
     from pip._internal.req import parse_requirements
 except ImportError: # for pip <= 9.0.3
@@ -29,7 +29,7 @@ setup(name=PACKAGE_NAME,
       keywords="ml framework",
       author="guiferviz",
       license="Copyright guiferviz",
-      packages=[PACKAGE_NAME],
+      packages=find_packages(),
       install_requires=REQUIREMENTS,
       entry_points={
           "console_scripts": [
