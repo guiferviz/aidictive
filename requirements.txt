@@ -1,3 +1,5 @@
-plotly
 pandas
-sklearn
+scikit-learn
+chart_studio
+torch
+torchvision
