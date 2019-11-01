@@ -42,8 +42,8 @@ def resnet(n_outputs, n="18", input_channels=3, pretrained=False):
             raise Exception("If you change the number of input channels you "
                             "cannot use pretrained networks because you are "
                             "changing the first conv layer.")
-        model.conv1 = nn.Conv2d(input_channels, 64, kernel_size=7,
-                                stride=2, padding=3, bias=False)
+        model.conv1 = torch.nn.Conv2d(input_channels, 64, kernel_size=7,
+                                      stride=2, padding=3, bias=False)
     # Freeze the params if needed.
     if pretrained:
         freeze(model)

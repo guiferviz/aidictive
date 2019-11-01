@@ -67,7 +67,11 @@ DEFAULT_DL_PARAMS = {
 
 class Trainer(object):
 
-    def __init__(self, model):
+    def __init__(self, model, gpu=True):
+        # Move model to GPU if GPU is present.
+        if gpu and torch.cuda.is_available():
+            device = torch.device("cuda")
+            model.to(device)
         # Save a reference of the model to train.
         self.model = model
         # Create an empty state.
@@ -235,9 +239,6 @@ class Trainer(object):
             only_X = True
         elif isinstance(X, torch.utils.data.dataloader.DataLoader):
             new_s = dict(dl=X)
-            only_X = True
-        elif isinstance(X, torch.utils.data.dataset.Dataset):
-            new_s = dict(ds=X)
             only_X = True
         else:
             dl_params_default = DEFAULT_DL_PARAMS[key].copy()
