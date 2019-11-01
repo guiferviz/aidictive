@@ -13,6 +13,7 @@ from aidictive import plot
 from aidictive import trainer
 from aidictive import utils
 from aidictive.utils import seed
+from aidictive.utils import save
 
 
 __author__ = "guiferviz"

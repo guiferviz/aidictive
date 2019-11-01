@@ -1,5 +1,6 @@
 
 import fnmatch
+import os
 import random
 
 import numpy as np
@@ -227,4 +228,21 @@ def seed(s, gpu=False):
     if gpu:
         torch.backends.cudnn.deterministic = True
         torch.backends.cudnn.benchmark = False
+
+
+def save(model, filepath, create_dir=True):
+    """Utility method to save a PyTorch model.
+
+    create_dir (bool): if `True` it's going to create the output directory
+        if it does not exist yet.
+    """
+
+    # Create output folder if needed.
+    if create_dir:
+        dir_name = os.path.dirname(filepath)
+        if not os.path.exists(dir_name):
+            os.makedirs(dir_name, exist_ok=True)
+
+    # Save torch state dict.
+    torch.save(model.state_dict(), filepath)
 
