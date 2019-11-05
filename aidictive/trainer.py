@@ -405,29 +405,39 @@ class Trainer(object):
         loss_function = self._state[LOSS]
         metric_function = self._state[METRIC]
 
-        ##############
-        # Test loop. #
-        ##############
+        self._test(dl_test, loss_function, metric_function, test_logger)
+
+    def test_train(self):
+        test_logger = self._state[TEST_LOGGER]
+        dl_train = self._state[DL_TRAIN]
+        loss_function = self._state[LOSS]
+        metric_function = self._state[METRIC]
+        self._test(dl_train, loss_function, metric_function, test_logger)
+
+    def _test(self, dl, loss_function, metric_function, logger):
         device = utils.get_model_device(self.model)
         self.model.eval()
         with torch.no_grad():
-            test_logger.init_epoch()
-            for X, Y in dl_test:
-                test_logger.init_batch()
+            logger.init_epoch()
+            for X, Y in dl:
+                logger.init_batch()
+                # Forward pass.
                 X, Y = X.to(device), Y.to(device)
                 Y_hat = self.model(X)
                 loss = loss_function(Y_hat, Y)
-                Y, Y_hat = Y.detach().cpu().numpy(), Y_hat.detach().cpu().numpy()
- 
+                # Compute metric.
+                Y = Y.detach().cpu().numpy()
+                Y_hat = Y_hat.detach().cpu().numpy()
                 if len(Y_hat.shape) > len(Y.shape):
                     Y_hat = np.argmax(Y_hat, axis=1)
                 metric = metric_function(Y, Y_hat)
-                test_logger.log("metric", metric)
-                test_logger.log("loss", loss.item())
+                # Log results.
+                logger.log("metric", metric)
+                logger.log("loss", loss.item())
                 batch_size = len(Y_hat)
-                test_logger.end_batch(batch_size)
-            test_logger.end_epoch()
-            test_logger.end()
+                logger.end_batch(batch_size)
+            logger.end_epoch()
+            logger.end()
 
     def predict(self, data):
         # TODO: dynamic batch size and iterate batch and join solutions.
