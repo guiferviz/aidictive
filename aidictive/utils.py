@@ -2,6 +2,7 @@
 import fnmatch
 import os
 import random
+import warnings
 
 import numpy as np
 
@@ -230,12 +231,15 @@ def seed(s, gpu=False):
         torch.backends.cudnn.benchmark = False
 
 
-def save(model, filepath, create_dir=True):
+def save(model, filepath, create_dir=True, check_extension=True):
     """Utility method to save a PyTorch model.
 
     create_dir (bool): if `True` it's going to create the output directory
         if it does not exist yet.
     """
+
+    if check_extension:
+        _check_model_extension(filepath)
 
     # Create output folder if needed.
     if create_dir:
@@ -247,10 +251,23 @@ def save(model, filepath, create_dir=True):
     torch.save(model.state_dict(), filepath)
 
 
-def load(model, filepath):
+def load(model, filepath, check_extension=True):
     """Utility method to load a PyTorch model. """
+
+    if check_extension:
+        _check_model_extension(filepath)
 
     state_dict = torch.load(filepath)
     model.load_state_dict(state_dict)
     model.eval()
+
+
+def _check_model_extension(filepath):
+    """Check if model filename uses the recommended extensions (pt or pth). """
+
+    if not (filepath.endswith(".pt") or filepath.endswith(".pth")):
+        warnings.warn("The recommender extension for PyTorch models are "
+                      "*'.pt' and '*.pth'. Consider changing the extension "
+                      "of this model or supress this warning using "
+                      "check_extension=False.")
 
