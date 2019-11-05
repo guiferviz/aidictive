@@ -14,6 +14,7 @@ from aidictive import trainer
 from aidictive import utils
 from aidictive.utils import seed
 from aidictive.utils import save
+from aidictive.utils import load
 
 
 __author__ = "guiferviz"

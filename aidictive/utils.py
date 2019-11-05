@@ -246,3 +246,11 @@ def save(model, filepath, create_dir=True):
     # Save torch state dict.
     torch.save(model.state_dict(), filepath)
 
+
+def load(model, filepath):
+    """Utility method to load a PyTorch model. """
+
+    state_dict = torch.load(filepath)
+    model.load_state_dict(state_dict)
+    model.eval()
+
