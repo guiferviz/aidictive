@@ -1,6 +1,8 @@
 
 import numpy as np
 
+import pandas as pd
+
 from aidictive import plot
 from aidictive import utils
 
@@ -112,6 +114,7 @@ def get_unique_values_serie(s):
     This function takes advantage of category types. The array
     `s.cat.categories` is indeed an unique vector.
     """
+
     if s.dtype.name == "category":
         return s.cat.categories
     return np.unique(s.values)
@@ -126,8 +129,9 @@ def compare_series_unique_values(s1, s2):
 def compare_df_unique_values(df1, df2):
     results = []
     columns = df1.columns.union(df2.columns)
-    for col in columns:
-        print(f"Evaluating column {col}...")
+    total_cols = len(columns)
+    for i, col in enumerate(columns):
+        print(f"Evaluating column {col} ({i+1}/{total_cols})...")
         if col in df1 and col in df2:
             la, iab, lb = compare_series_unique_values(df1[col], df2[col])
             results.append([col, la, iab, lb])
@@ -135,7 +139,7 @@ def compare_df_unique_values(df1, df2):
             u = get_unique_values_serie(df1[col])
             results.append([col, len(u), -1, -1])
         elif col in df2:
-            u = get_unique_values_serie(df1[col])
+            u = get_unique_values_serie(df2[col])
             results.append([col, -1, -1, len(u)])
     results = pd.DataFrame(results)
     results.columns = ["column_name", "# unique in df1",
