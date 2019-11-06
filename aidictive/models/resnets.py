@@ -51,6 +51,8 @@ def resnet(n_outputs, n="18", input_channels=3, pretrained=False):
     num_ftrs = model.fc.in_features
     # Create a new linear layer with the desired number of outputs.
     model.fc = torch.nn.Linear(num_ftrs, n_outputs)
+    # Easy unfreeze model.
+    model.unfreeze = lambda: freeze(model, False)
     return model
 
 
