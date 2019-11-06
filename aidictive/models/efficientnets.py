@@ -5,6 +5,8 @@ import efficientnet_pytorch
 
 import torch
 
+from aidictive.models.utils import freeze, unfreeze
+
 
 def efficientnet(n_outputs, b="0", pretrained=False, in_channels=3,
                  freeze=False):

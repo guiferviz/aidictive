@@ -4,6 +4,8 @@ import torch
 from aidictive.activations import get as get_activation
 
 
+# TODO: Change name to FCNN (Fully Connected Neural Network) because
+# convolutions can also be FFNN (Feed Forward Neural Network).
 class FFNN(torch.nn.Module):
     """N layers NN for regression. """
 

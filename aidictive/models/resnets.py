@@ -2,7 +2,7 @@
 import torch
 import torchvision
 
-from aidictive.models import freeze, unfreeze
+from aidictive.models.utils import freeze, unfreeze
 
 
 _RESNETS = {
