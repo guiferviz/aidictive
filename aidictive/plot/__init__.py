@@ -59,7 +59,7 @@ def reduce(matrix, reducer="pca", **kwargs):
     return x, y
 
 
-def _get_reducer(reducer):
+def _get_reducer(reducer, n_components=2, **kwargs):
     """Return a dimensionality reduction object with SKLearn interface.
 
     If reducer is not an string we assume it is object that works
@@ -68,13 +68,13 @@ def _get_reducer(reducer):
     if type(reducer) == str:
         if reducer.lower() in ["tsne", "t-sne"]:
             from sklearn.manifold import TSNE
-            reducer = TSNE(n_components=2)
+            reducer = TSNE(n_components=n_components, **kwargs)
         elif reducer.lower() == "pca":
             from sklearn.decomposition import PCA
-            reducer = PCA(n_components=2)
+            reducer = PCA(n_components=n_components, **kwargs)
         elif reducer.lower() == "umap":
             from umap import UMAP
-            reducer = UMAP(n_components=2)
+            reducer = UMAP(n_components=n_components, **kwargs)
         else:
             raise ValueError(f"Unknown reducer name '{reducer}'.")
     return reducer
