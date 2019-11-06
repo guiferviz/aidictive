@@ -408,6 +408,8 @@ class Trainer(object):
         self._test(dl_test, loss_function, metric_function, test_logger)
 
     def test_train(self):
+        # Create all objects needed for test.
+        self.prepare_for_test()
         test_logger = self._state[TEST_LOGGER]
         dl_train = self._state[DL_TRAIN]
         loss_function = self._state[LOSS]
@@ -439,16 +441,25 @@ class Trainer(object):
             logger.end_epoch()
             logger.end()
 
-    def predict(self, data):
-        # TODO: dynamic batch size and iterate batch and join solutions.
-        dl = get_tensor_data_loader(data, batch_size=1000000)
+    def predict(self, data, batch_size=None):
+        """Run inference of the model in the given data. """
+
+        outputs = []
+        dl = get_tensor_data_loader(data, batch_size=batch_size)
+        device = utils.get_model_device(self.model)
         self.model.eval()
         with torch.no_grad():
-            device = utils.get_model_device(self.model)
             for X, in dl:
                 X = X.to(device)
                 Y_hat = self.model(X)
-                return Y_hat
+                Y_hat = Y_hat.detach().cpu().numpy()
+                # TODO: move this to a method like "make_predictions" so
+                # we can separate predict from predict_proba.
+                if len(Y_hat.shape) > len(Y.shape):
+                    Y_hat = np.argmax(Y_hat, axis=1)
+                outputs.append(Y_hat)
+
+        return np.concatenate(outputs, axis=0)
 
     def predict_argmax(self, preds):
         return torch.argmax(preds, axis=1)

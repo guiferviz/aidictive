@@ -2,6 +2,8 @@
 import torch
 import torchvision
 
+from aidictive.models import freeze, unfreeze
+
 
 _RESNETS = {
     "18": torchvision.models.resnet18,
@@ -12,12 +14,7 @@ _RESNETS = {
 }
 
 
-def freeze(model, freeze=True):
-    for param in model.parameters():
-        param.requires_grad = not freeze
-
-
-def resnet(n_outputs, n="18", input_channels=3, pretrained=False):
+def resnet(n_outputs, n="18", in_channels=3, pretrained=False, freeze=False):
     """Create a resnet model using torchvision.
 
     You can ajust the number of input_channels and the number of outputs.
@@ -29,30 +26,36 @@ def resnet(n_outputs, n="18", input_channels=3, pretrained=False):
         18, 34, 50, 101 and 151.
     """
 
-    # Get resnet model from the dict of models.
+    # Get resnet model from the dict of models and create an instance.
     if n not in _RESNETS:
         models_list = _RESNETS.items()
         raise Exception(f"Model resnet{n} not found, try with {models_list}")
     model = _RESNETS[str(n)](pretrained=pretrained)
+
+    # Freeze the params if needed.
+    if freeze:
+        # It does not make sense to freeze a non-pretrained model.
+        assert pretrained
+        freeze(model)
+        # Method for easily unfreeze model.
+        model.unfreeze = lambda: unfreeze(model)
+
     # If the number of input channels is not 3 we need to recreate the first
     # conv layer. Here I'm using the same parameters except for the number
     # of input channels.
-    if input_channels != 3:
+    if in_channels != 3:
         if pretrained:
+            # TODO: change exception by warning like in efficientnets.
             raise Exception("If you change the number of input channels you "
                             "cannot use pretrained networks because you are "
                             "changing the first conv layer.")
-        model.conv1 = torch.nn.Conv2d(input_channels, 64, kernel_size=7,
+        # TODO: Recreate conv using parameters of the existing one.
+        model.conv1 = torch.nn.Conv2d(in_channels, 64, kernel_size=7,
                                       stride=2, padding=3, bias=False)
-    # Freeze the params if needed.
-    if pretrained:
-        freeze(model)
     # Get the input number of features of the last linear layer.
-    num_ftrs = model.fc.in_features
+    in_fc_features = model.fc.in_features
     # Create a new linear layer with the desired number of outputs.
-    model.fc = torch.nn.Linear(num_ftrs, n_outputs)
-    # Easy unfreeze model.
-    model.unfreeze = lambda: freeze(model, False)
+    model.fc = torch.nn.Linear(in_fc_features, n_outputs)
     return model
 
 
