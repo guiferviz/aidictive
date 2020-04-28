@@ -11,3 +11,4 @@ sphinx_rtd_theme
 
 # Others.
 pip-tools
+notebook
