@@ -1,4 +1,10 @@
+# Basic data science packages.
 pandas
 scikit-learn
+
+# PyTorch.
 torch
 torchvision
+
+# Plotly package for cool visualizations.
+chart_studio
