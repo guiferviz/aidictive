@@ -1,0 +1,13 @@
+# All runtime dependencies.
+-r requirements.in
+
+# Tests utilities.
+pylint
+pytest
+
+# Generate documentation.
+sphinx
+sphinx_rtd_theme
+
+# Others.
+pip-tools
